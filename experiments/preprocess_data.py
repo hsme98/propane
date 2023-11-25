@@ -117,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_docs_per_sample", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=10)
     parser.add_argument("--fp16", action="store_true")
-    parser.add_argument("--init_run", type=bool, default=False)
+    parser.add_argument("--init_run", action="store_true")
 
 
     args = parser.parse_args()
