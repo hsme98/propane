@@ -126,7 +126,7 @@ if __name__ == "__main__":
         # needs to have the HF_HOME director set up properly this will run in the init_node
         assert( "HF_HOME" in list(os.environ.keys()) )
         hf_home_dir = os.environ["HF_HOME"]
-        models = common.load_model_tokenizer(args.model_name_or_path, args.fp16, device_map="cpu")
+        models, tokenizers = common.load_model_tokenizer(args.model_name_or_path, args.fp16, device_map="cpu")
     else:
         pool = common.setup_multiproc_env()
         n_procs = pool._processes
