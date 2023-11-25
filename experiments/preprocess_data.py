@@ -117,64 +117,73 @@ if __name__ == "__main__":
     parser.add_argument("--num_docs_per_sample", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=10)
     parser.add_argument("--fp16", action="store_true")
+    parser.add_argument("--init_run", type=bool, default=False)
+
 
     args = parser.parse_args()
-    pool = common.setup_multiproc_env()
-    n_procs = pool._processes
-    models, tokenizers = common.load_models_tokenizers_parallel(
-        args.model_name_or_path, args.fp16
-    )
 
-    if "alpaca" in args.raw_dataset_path:
-        prompts = process_alpaca(args.raw_dataset_path, args.num_samples)
-    elif "hellaswag" in args.raw_dataset_path:
-        prompts = process_hellaswag(args.raw_dataset_path, args.num_samples)
+    if args.init_run:
+        # needs to have the HF_HOME director set up properly this will run in the init_node
+        assert( "HF_HOME" in list(os.environ.keys()) )
+        hf_home_dir = os.environ["HF_HOME"]
+        models = common.load_model_tokenizer(args.model_name_or_path, args.fp16, device_map="cpu")
     else:
-        raise ValueError(f"Dataset {args.raw_dataset_path} not supported")
-
-    prompts_per_proc: list[list[tuple[int, str]]] = [[] for _ in range(n_procs)]
-    reconstructors = []
-    prompts_per_proc = common.split_for_multiproc(prompts, n_procs)
-    for i in range(n_procs):
-        reconstructors.append(
-            Reconstructor(
-                models[i],
-                tokenizers[i],
-                args.batch_size,
-                args.max_len,
-            )
+        pool = common.setup_multiproc_env()
+        n_procs = pool._processes
+        models, tokenizers = common.load_models_tokenizers_parallel(
+            args.model_name_or_path, args.fp16
         )
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    print(f"Total prompts: {len(prompts)}")
-    print("Generating data...")
-    results: list = []
+        if "alpaca" in args.raw_dataset_path:
+            prompts = process_alpaca(args.raw_dataset_path, args.num_samples)
+        elif "hellaswag" in args.raw_dataset_path:
+            prompts = process_hellaswag(args.raw_dataset_path, args.num_samples)
+        else:
+            raise ValueError(f"Dataset {args.raw_dataset_path} not supported")
 
-    for i in range(n_procs):
-        results.append(
-            pool.apply_async(
-                reconstructor_worker,
-                (
-                    reconstructors[i],
-                    prompts_per_proc[i],
+        prompts_per_proc: list[list[tuple[int, str]]] = [[] for _ in range(n_procs)]
+        reconstructors = []
+        prompts_per_proc = common.split_for_multiproc(prompts, n_procs)
+        for i in range(n_procs):
+            reconstructors.append(
+                Reconstructor(
+                    models[i],
+                    tokenizers[i],
+                    args.batch_size,
                     args.max_len,
-                    args.num_docs_per_sample,
-                    args.output_dir,
-                ),
+                )
             )
-        )
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    pool.close()
-    pool.join()
-    results = [x.get() for x in results]
-    results_flat = [x for sublist in results for x in sublist]
+        print(f"Total prompts: {len(prompts)}")
+        print("Generating data...")
+        results: list = []
 
-    print("Saving data...")
-    with open(
-        os.path.join(
-            args.output_dir,
-            f"docs_{args.num_docs_per_sample}_prompts_{args.num_samples}.pkl",
-        ),
-        "wb",
-    ) as f:
-        pickle.dump(results_flat, f)
+        for i in range(n_procs):
+            results.append(
+                pool.apply_async(
+                    reconstructor_worker,
+                    (
+                        reconstructors[i],
+                        prompts_per_proc[i],
+                        args.max_len,
+                        args.num_docs_per_sample,
+                        args.output_dir,
+                    ),
+                )
+            )
+
+        pool.close()
+        pool.join()
+        results = [x.get() for x in results]
+        results_flat = [x for sublist in results for x in sublist]
+
+        print("Saving data...")
+        with open(
+            os.path.join(
+                args.output_dir,
+                f"docs_{args.num_docs_per_sample}_prompts_{args.num_samples}.pkl",
+            ),
+            "wb",
+        ) as f:
+            pickle.dump(results_flat, f)
