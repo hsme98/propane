@@ -273,9 +273,13 @@ def load_models_tokenizers_parallel(
 def setup_multiproc_env(split_models: bool = False):
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
     mp.set_start_method("spawn")
-    n_procs = (
-        torch.cuda.device_count() // 2 if split_models else torch.cuda.device_count()
-    )
+    if torch.cuda.is_available():
+        n_procs = (
+            torch.cuda.device_count() // 2 if split_models else torch.cuda.device_count()
+        )
+    else:
+        n_procs = (1)
+
     pool = mp.Pool(processes=n_procs)
 
     return pool

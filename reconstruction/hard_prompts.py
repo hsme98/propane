@@ -29,7 +29,7 @@ class FullPrompt:
     target_prefix_slice: slice
     target_prefix_ids: torch.Tensor
     prompt_ident: int  # For bookkeeping purposes
-
+ 
     def update_suffix(self, suffix_ids: torch.Tensor) -> None:
         """
         Updates the prompt with a new suffix
